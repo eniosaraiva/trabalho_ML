@@ -1,0 +1,99 @@
+---
+title: "Constituições Comparadas"
+author: "Ênio Saraiva Leão"
+date: "01-12-2023"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+pacman::p_load(crosstalk, dplyr, DT, plotly, readr, tidyverse, ggplot2, quantreg)
+  
+sd <- load("dados_selecionados2.rdata")
+
+sd <- SharedData$new(sd)
+```
+<style>
+body {
+  text-align: justify;
+}
+</style>
+
+Recorte realizado a partir da base de dados “Characteristics of National Constitutions, Version 4.0”, desenvolvida por Comparative Constitutions Project, sob a supervisão de Zachary Elkins e Tom Ginsburg, 2022.
+Trabalho elaborado como parte da disciplina Machine Learning para Ciência Política do PPGCP/UFPE 2023.2.
+
+```{r, warning=FALSE, out.width='100%', echo = FALSE, message = FALSE}
+
+dados_selecionados2 %>% select(country, systyear, length, demonum) %>% datatable(
+  # Título
+  caption = htmltools::tags$caption(
+    # estilo do título usando css
+    style = 'text-align: center; font-size: 18px; font-weight: bold;',
+    'Tabela: Base de Dados Constituições Comparadas'),
+  # nomes das colunas
+  colnames = c('País', 'Ano da Publicação', 'Tamanho da Constituição', 'Menções a democracia'),
+  filter = "top",
+  # extensões para serem acrescentadas
+  extensions = c('Buttons', 'ColReorder', 'Responsive'),
+  # as opções configuram efetivamente as extensões
+  options = list(
+    #
+    dom = 'Blfrtip',
+    # primeiro vamos configurar os botões, adicionando funcionalidades
+    buttons = c('copy', 'csv', 'excel', 'pdf', 'print'),
+    # permite ao usuário reordenar as colunas
+    colReorder = TRUE,
+    # controla quantas linhas serão mostradas por página
+    pageLength = 25, 
+    # ativa o spinner (indicador de processamento)
+    processing = TRUE),
+  )
+
+dados_selecionados2 %>% 
+  select(country, length) %>% 
+  group_by(country, length) %>% 
+  summarise(count = n()) %>% 
+  plot_ly(
+    x = ~country,
+    y = ~length,
+    z = ~count,
+    type = "heatmap"
+  )
+
+dados_selecionados2 %>% 
+  group_by(systyear) %>% 
+  summarise(count = n_distinct(country)) %>% 
+  ggplot(aes(x = systyear, y = count)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  labs(x = "Ano da Publicação", y = "Número de Países", title = "Número de Países por Ano") +
+  theme_minimal()
+
+
+cluster_data <- dados_selecionados2 %>% select(demonum)
+
+# Determinar a melhor quantidade de clusters usando o método Elbow
+sse <- c()
+for (k in 1:10) {
+  kmeans_result <- kmeans(cluster_data, centers = k)
+  sse[k] <- kmeans_result$tot.withinss
+}
+
+# Plotar o gráfico de SSE em relação ao número de clusters
+plot(1:10, sse, type = "b", pch = 19, frame.plot = FALSE,
+     xlab = "Número de Clusters", ylab = "Soma dos Erros Quadrados (SSE)")
+
+kmeans_result <- kmeans(cluster_data, centers = 4)
+clustered_data <- cluster_data %>% mutate(cluster = as.factor(kmeans_result$cluster))
+
+ggplot(clustered_data, aes(x = demonum, fill = cluster)) +
+  geom_density(alpha = 0.5) +
+  labs(x = "Quantidade de menções a democracia", y = "Densidade", title = "Clusterização da quantidade de menção a democracia")
+
+regression_model <- rq(length ~ demonum, data = dados_selecionados2, tau = 0.5)
+
+# Gráfico de dispersão com linha de regressão de quantis
+ggplot(dados_selecionados2, aes(x = demonum, y = length)) +
+  geom_point() +
+  geom_quantile(formula = y ~ x, method = "rq", formula.arg = list(tau = 0.5), se = FALSE, color = "red") +
+  labs(x = "Menções a Democracia", y = "Tamanho da Constituição", title = "Regressão de Quantis (Mediana)") +
+  theme_minimal()
+```
